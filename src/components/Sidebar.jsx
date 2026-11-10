@@ -2,6 +2,8 @@ import { memo, useMemo, useState } from 'react';
 import { Archive, ArrowLeft, Ban, Camera, FileText, Film, Image as ImageIcon, MapPin, Mic, Moon, RefreshCw, Search, Sun, User, X, ChartNoAxesColumn, Star, Lock } from 'lucide-react';
 import Avatar from './Avatar.jsx';
 import Status from './Status.jsx';
+import { RBadge } from './ForensicPanel.jsx';
+import { DropArea } from './DropZone.jsx';
 import { isMine, listTime, previewText } from '../lib/format.js';
 
 const fold = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -52,7 +54,7 @@ const ChatItem = memo(function ChatItem({ chat, me, active, unread, onSelect }) 
   );
 });
 
-export default function Sidebar({ chats, selectedId, onSelect, meOf, unreadOf, theme, onToggleTheme, onReload, reloading, resources }) {
+export default function Sidebar({ onForensic, onFiles, dragging, uploading, chats, selectedId, onSelect, meOf, unreadOf, theme, onToggleTheme, onReload, reloading, resources }) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
   const [showArchived, setShowArchived] = useState(false);
@@ -84,6 +86,9 @@ export default function Sidebar({ chats, selectedId, onSelect, meOf, unreadOf, t
           <h1 className="text-[22px] font-bold text-fg">Conversas</h1>
         )}
         <div className="flex items-center gap-1 text-icon">
+          <button onClick={onForensic} className="rounded-full p-2 hover:bg-black/5 lg:hidden dark:hover:bg-white/5" title="Busca forense (regex)">
+            <RBadge size={19} />
+          </button>
           <button onClick={onReload} className="rounded-full p-2 hover:bg-black/5 dark:hover:bg-white/5" title="Recarregar a pasta de dados">
             <RefreshCw size={19} className={reloading ? 'animate-spin' : ''} />
           </button>
@@ -140,20 +145,16 @@ export default function Sidebar({ chats, selectedId, onSelect, meOf, unreadOf, t
         {list.map((c) => (
           <ChatItem key={c.id} chat={c} me={meOf(c)} active={c.id === selectedId} unread={unreadOf(c)} onSelect={onSelect} />
         ))}
-        {!list.length && (
-          <div className="px-8 py-10 text-center text-[14px] text-fg2">
-            {chats.length ? (
-              'Nenhuma conversa encontrada.'
-            ) : (
-              <>
-                Nenhuma conversa encontrada em
-                <code className="mx-1 rounded bg-search px-1 text-[12px] break-all">{resources}</code>.
-                <br />
-                <br />
-                Coloque ali um <b>ChatStorage.sqlite</b> (iPhone) ou conversas exportadas pelo WhatsApp (<b>.txt</b> ou <b>.zip</b>) e clique em recarregar.
-              </>
-            )}
-          </div>
+        {!list.length && chats.length > 0 && <div className="px-8 py-10 text-center text-[14px] text-fg2">Nenhuma conversa encontrada.</div>}
+        {!chats.length ? (
+          <>
+            <DropArea onFiles={onFiles} dragging={dragging} busy={uploading} />
+            <div className="px-8 pb-4 text-center text-[12px] leading-[17px] text-fg3">
+              Os arquivos são copiados para <code className="rounded bg-search px-1 break-all">{resources}</code>. Você também pode colocá-los lá manualmente e clicar em recarregar.
+            </div>
+          </>
+        ) : (
+          !q && !showArchived && <DropArea onFiles={onFiles} dragging={dragging} busy={uploading} compact />
         )}
         <div className="flex items-center justify-center gap-1.5 py-6 text-[12px] text-fg3">
           <Lock size={11} /> Suas mensagens pessoais ficam somente neste computador
@@ -163,19 +164,20 @@ export default function Sidebar({ chats, selectedId, onSelect, meOf, unreadOf, t
   );
 }
 
-export function Rail({ theme, onToggleTheme, chatsCount }) {
+export function Rail({ theme, onToggleTheme, chatsCount, mode, onMode }) {
+  const item = (active) => `relative flex h-10 w-10 items-center justify-center rounded-full text-icon ${active ? 'bg-black/10 dark:bg-white/10' : 'hover:bg-black/5 dark:hover:bg-white/5'}`;
   return (
     <nav className="flex w-[64px] shrink-0 flex-col items-center justify-between border-r border-divider bg-rail py-3 max-lg:hidden">
       <div className="flex flex-col items-center gap-2">
-        <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-black/10 text-icon dark:bg-white/10" title={`${chatsCount} conversas`}>
+        <button onClick={() => onMode('chats')} className={item(mode === 'chats')} title={`Conversas (${chatsCount})`}>
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 5h16v11H9l-5 4z" />
             <path d="M8 9h8M8 12h5" />
           </svg>
-        </div>
-        <div className="flex h-10 w-10 items-center justify-center text-icon opacity-50" title="Favoritas (somente leitura)">
-          <Star size={21} />
-        </div>
+        </button>
+        <button onClick={() => onMode('forensic')} className={`${item(mode === 'forensic')} ${mode === 'forensic' ? 'text-wa' : ''}`} title="Busca forense (regex)">
+          <RBadge size={22} active={mode === 'forensic'} />
+        </button>
       </div>
       <button onClick={onToggleTheme} className="flex h-10 w-10 items-center justify-center rounded-full text-icon hover:bg-black/5 dark:hover:bg-white/5" title="Alternar tema claro/escuro">
         {theme === 'dark' ? <Sun size={21} /> : <Moon size={21} />}

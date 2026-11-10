@@ -16,6 +16,29 @@ Para ver as conversas de exemplo: `npm run exemplos`.
 
 O servidor escuta apenas em `127.0.0.1`. Nenhum dado sai do seu computador.
 
+## Adicionar conversas (arrastar e soltar)
+Arraste arquivos ou **pastas inteiras** para qualquer ponto da janela, ou use a área tracejada na barra lateral ("Escolher arquivos" / "Escolher pasta"):
+
+- **iPhone:** `ChatStorage.sqlite` (+ `Contacts.sqlite`, opcional) e a pasta `Media`. Solte tudo junto, ou a pasta do backup inteira.
+- **Exportações:** o `.txt` com as mídias, ou o `.zip`.
+
+Os arquivos são **copiados** para a pasta de dados, mantendo as subpastas, e a lista de conversas é atualizada ao final. Nada é sobrescrito: um arquivo idêntico (mesmo nome e tamanho) é ignorado, e um arquivo diferente com o mesmo nome vira `nome (1).ext`.
+
+## Levar para outro computador
+
+1. Instale o **Node.js 22.5 ou mais novo** (recomendado: versão LTS em https://nodejs.org). Confira com `node -v`.
+2. Copie a pasta do projeto **sem** `node_modules`, `dist` e `.cache` (essas pastas são recriadas). Use pendrive, zip ou `git clone`.
+3. Copie os dados para `resources/`: os arquivos `.sqlite` e a pasta `Media/`, ou as exportações `.txt`/`.zip`. Essa pasta fica fora do git (`.gitignore`), então precisa ser copiada à parte.
+4. Na pasta do projeto, rode:
+   ```bash
+   npm install
+   npm start
+   ```
+5. Abra http://localhost:3001.
+
+Dados em outra pasta: `node server/index.js --dir "D:\backup-whatsapp"` (rode `npm run build` antes, uma vez).
+Para abrir de outro aparelho na mesma rede (celular, por exemplo), use `$env:HOST="0.0.0.0"; npm start` no PowerShell e acesse `http://<IP-do-PC>:3001`. Atenção: assim, qualquer pessoa na rede consegue ver as mensagens.
+
 ## Formatos suportados (pasta `resources/`)
 
 O servidor varre `resources/` recursivamente (ou a pasta indicada com `--dir <pasta>` ou `WA_DIR=<pasta>`):
@@ -48,12 +71,25 @@ O arquivo exportado não diz quem é você. O visualizador tenta adivinhar (nome
 - Painel de dados com mídia, docs e links e lista de participantes, além de busca de mensagens com salto até o resultado.
 - Link direto: `http://localhost:3001/?chat=<id>&msg=<índice>&theme=dark`.
 
+## Busca forense (botão **R**)
+O botão **R** no trilho lateral (ou no topo da lista, em telas menores) abre a varredura por expressões regulares em **todas** as conversas:
+
+- **Filtros rápidos:** CPF, CNPJ, Telefone, RG, Datas, E-mail e Valores R$.
+- **"Validar dígitos"** (ligado por padrão) descarta CPF/CNPJ com dígito verificador inválido, telefones com DDD inexistente e datas impossíveis (ex.: 31/02). Desligue para ver todos os candidatos.
+- **Termo livre:** sem diferenciar acentos nem maiúsculas. O botão `.*` ativa regex (sintaxe JavaScript) e `Aa` diferencia maiúsculas.
+- **Escopo:** todas as conversas, a conversa aberta ou uma conversa específica.
+- **Resultados:** conversa, autor, data/hora e trecho com o valor destacado. Clicar abre a conversa rolada até a mensagem, com o valor marcado.
+- **Valores únicos:** cada valor distinto com o número de ocorrências e de conversas. Clicar filtra as ocorrências daquele valor.
+- **CSV:** exporta os resultados (abre direto no Excel).
+- A regex roda numa thread separada com limite de 15 s, então uma expressão lenta não trava o servidor.
+
 ## Estrutura
 ```
 server/index.js     API HTTP (Express) e entrega de mídia com suporte a Range
 server/library.js   varredura da pasta, cache por data de modificação, zips
 server/ios.js       leitor do ChatStorage.sqlite (iOS)
 server/parser.js    parser das exportações .txt (Android e iOS)
+server/forensic*.js padrões/validadores da busca forense e worker de regex
 src/                interface React + Tailwind CSS v4 + lucide-react
 exemplos/           conversas de exemplo (Android em pasta, iPhone em .zip)
 ```

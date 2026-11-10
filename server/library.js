@@ -234,6 +234,12 @@ export function getLibrary() {
   return library;
 }
 
+/** Descarta os caches (usado após envio de arquivos: novas mídias mudam a resolução de caminhos). */
+export function invalidateCaches() {
+  parseCache.clear();
+  dbCache.clear();
+}
+
 export function summary(c) {
   const last = [...c.messages].reverse().find((m) => m.type !== 'system') || c.messages.at(-1) || null;
   return {

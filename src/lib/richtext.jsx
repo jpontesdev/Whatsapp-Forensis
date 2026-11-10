@@ -14,22 +14,29 @@ const TOKEN = new RegExp(
 
 const fold = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
+// destaca um termo (string) ou vários (array) — sem diferenciar maiúsculas/acentos
 function hl(text, key, q) {
-  if (!q) return <Fragment key={key}>{text}</Fragment>;
+  const terms = (Array.isArray(q) ? q : [q]).map((t) => fold(t || '')).filter(Boolean);
+  if (!terms.length) return <Fragment key={key}>{text}</Fragment>;
   const f = fold(text);
-  const fq = fold(q);
   const parts = [];
   let pos = 0;
-  let idx;
   // fold() preserva o comprimento para letras latinas acentuadas comuns
-  while (fq && f.length === text.length && (idx = f.indexOf(fq, pos)) >= 0) {
+  while (f.length === text.length) {
+    let idx = -1;
+    let len = 0;
+    for (const t of terms) {
+      const j = f.indexOf(t, pos);
+      if (j >= 0 && (idx < 0 || j < idx || (j === idx && t.length > len))) [idx, len] = [j, t.length];
+    }
+    if (idx < 0) break;
     if (idx > pos) parts.push(text.slice(pos, idx));
     parts.push(
       <mark key={idx} className="rounded-sm bg-[#ffd279] text-[#111b21]">
-        {text.slice(idx, idx + fq.length)}
+        {text.slice(idx, idx + len)}
       </mark>,
     );
-    pos = idx + fq.length;
+    pos = idx + len;
   }
   parts.push(text.slice(pos));
   return <Fragment key={key}>{parts}</Fragment>;

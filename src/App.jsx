@@ -5,6 +5,9 @@ import ChatView from './components/ChatView.jsx';
 import InfoPanel from './components/InfoPanel.jsx';
 import SearchPanel from './components/SearchPanel.jsx';
 import Lightbox from './components/Lightbox.jsx';
+import ForensicPanel from './components/ForensicPanel.jsx';
+import { DropOverlay, UploadToast } from './components/DropZone.jsx';
+import { filesFromDrop, uploadFiles } from './lib/upload.js';
 import { api } from './lib/api.js';
 
 const store = {
@@ -37,6 +40,8 @@ export default function App() {
   const [lightbox, setLightbox] = useState(null); // {items, index}
   const [jump, setJump] = useState(null);
   const [highlight, setHighlight] = useState('');
+  const [leftMode, setLeftMode] = useState(() => (new URLSearchParams(location.search).get('tool') === 'forensic' ? 'forensic' : 'chats')); // 'chats' | 'forensic'
+  const [forensicHL, setForensicHL] = useState(null); // {chatId, values}
 
   const loadChats = useCallback(async (reload = false) => {
     setReloading(true);
@@ -45,6 +50,7 @@ export default function App() {
       setChats(r.chats);
       setResources(r.resources);
       setError(null);
+      return r.chats.length;
     } catch (e) {
       setError(e.message);
     } finally {
@@ -55,6 +61,66 @@ export default function App() {
   useEffect(() => {
     loadChats();
   }, [loadChats]);
+
+  // ---------- arrastar e soltar arquivos de conversa ----------
+  const [dragging, setDragging] = useState(false);
+  const [upProgress, setUpProgress] = useState(null);
+  const [upResult, setUpResult] = useState(null);
+  const uploading = !!upProgress;
+
+  const handleFiles = useCallback(
+    async (items) => {
+      if (!items.length || uploading) return;
+      setUpResult(null);
+      setUpProgress({ done: 0, total: items.length, bytes: 0, totalBytes: items.reduce((n, i) => n + i.file.size, 0), current: '' });
+      const before = chats.length;
+      const result = await uploadFiles(items, setUpProgress);
+      const after = await loadChats(true);
+      setUpProgress(null);
+      setUpResult({ ...result, chatsAdded: after != null ? after - before : null });
+      if (!result.failed.length) setTimeout(() => setUpResult((r) => (r === null ? r : null)), 9000);
+    },
+    [chats.length, loadChats, uploading],
+  );
+
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+    const enter = (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      setDragging(true);
+    };
+    const over = (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    };
+    const leave = (e) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (!depth) setDragging(false);
+    };
+    const drop = async (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setDragging(false);
+      const items = await filesFromDrop(e.dataTransfer);
+      handleFiles(items);
+    };
+    window.addEventListener('dragenter', enter);
+    window.addEventListener('dragover', over);
+    window.addEventListener('dragleave', leave);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragenter', enter);
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('dragleave', leave);
+      window.removeEventListener('drop', drop);
+    };
+  }, [handleFiles]);
 
   // link direto: ?chat=<id>&msg=<índice>
   useEffect(() => {
@@ -67,8 +133,6 @@ export default function App() {
   useEffect(() => {
     store.set('wa-selected', selectedId);
     setGallery(null);
-    setHighlight('');
-    setJump(null);
     if (!selectedId) return;
     let cancel = false;
     api.gallery(selectedId).then((g) => !cancel && setGallery(g)).catch(() => {});
@@ -91,6 +155,19 @@ export default function App() {
     setSelectedId(id);
     setOpened((o) => ({ ...o, [id]: true }));
     setPanel((p) => (p === 'search' ? null : p));
+    setJump(null);
+    setHighlight('');
+    setForensicHL(null);
+  }, []);
+
+  // resultado da busca forense: abre a conversa já rolada até a mensagem, com o valor destacado
+  const openForensicResult = useCallback((r) => {
+    setSelectedId(r.chatId);
+    setOpened((o) => ({ ...o, [r.chatId]: true }));
+    setPanel((p) => (p === 'search' ? null : p));
+    setHighlight('');
+    setForensicHL({ chatId: r.chatId, values: r.values });
+    setJump({ i: r.i, n: Date.now() });
   }, []);
 
   const setMe = (name) => {
@@ -120,11 +197,18 @@ export default function App() {
 
   return (
     <div className="flex h-full overflow-hidden bg-app">
-      <Rail theme={theme} onToggleTheme={toggleTheme} chatsCount={chats.length} />
+      <Rail theme={theme} onToggleTheme={toggleTheme} chatsCount={chats.length} mode={leftMode} onMode={setLeftMode} />
 
       {/* barra lateral */}
       <div className={`flex h-full w-[30%] max-w-[500px] min-w-[340px] border-r border-divider max-lg:w-[40%] max-md:w-full max-md:max-w-none max-md:min-w-0 ${chat ? 'max-md:hidden' : ''}`}>
+        {leftMode === 'forensic' ? (
+          <ForensicPanel chats={chats} currentChatId={selectedId} onOpenResult={openForensicResult} onClose={() => setLeftMode('chats')} />
+        ) : (
         <Sidebar
+          onForensic={() => setLeftMode('forensic')}
+          onFiles={handleFiles}
+          dragging={dragging}
+          uploading={uploading}
           chats={chats}
           selectedId={selectedId}
           onSelect={select}
@@ -136,6 +220,7 @@ export default function App() {
           reloading={reloading}
           resources={resources}
         />
+        )}
       </div>
 
       {/* conversa */}
@@ -147,7 +232,7 @@ export default function App() {
               chat={chat}
               me={me}
               jump={jump}
-              highlight={panel === 'search' ? highlight : ''}
+              highlight={panel === 'search' && highlight ? highlight : forensicHL?.chatId === chat.id ? forensicHL.values : ''}
               panelOpen={panel}
               onOpenInfo={() => setPanel((p) => (p === 'info' ? null : 'info'))}
               onOpenSearch={() => setPanel((p) => (p === 'search' ? null : 'search'))}
@@ -161,6 +246,9 @@ export default function App() {
           <Welcome chats={chats.length} messages={totalMsgs} error={error} />
         )}
       </main>
+
+      {dragging && <DropOverlay />}
+      <UploadToast progress={upProgress} result={upResult} onClose={() => setUpResult(null)} />
 
       {lightbox && chat && (
         <Lightbox chat={chat} items={lightbox.items} index={lightbox.index} onIndex={(index) => setLightbox((l) => ({ ...l, index }))} onClose={() => setLightbox(null)} onJump={jumpTo} />
